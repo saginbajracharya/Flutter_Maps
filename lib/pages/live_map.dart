@@ -1,4 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
+import 'package:google_maps_polyline/google_maps_polyline.dart';
+import 'package:google_maps_polyline/src/point_latlng.dart';
+import 'package:http/http.dart' as http;  
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -18,9 +23,10 @@ class _LiveMapState extends State<LiveMap> {
   final  _formKey                     = GlobalKey<FormState>();
   final  MapController _mapController = MapController();
   LatLng _currentLocation             = const LatLng(0, 0);
-  double _currentDirection            = 0.0; 
+  double _currentDirection            = 0.0;
   String _currentMapStyle             = 'default';
-  bool _isLocationInitialized         = false;
+  bool   _isLocationInitialized       = false;
+  bool   _isRouteFetched              = false;
 
   LatLng? _startPoint; // New variable for starting point
   LatLng? _endPoint;   // New variable for destination point
@@ -30,6 +36,7 @@ class _LiveMapState extends State<LiveMap> {
   final List<LatLng> _pathPoints = [];
   final TextEditingController _startPointController = TextEditingController(); // Controller for start point
   final TextEditingController _endPointController = TextEditingController();   // Controller for end point
+  StreamSubscription<Position>? _positionStreamSubscription; // Add a subscription variable
 
   // Map of available styles
   final Map<String, String> _mapStyles = {
@@ -48,11 +55,13 @@ class _LiveMapState extends State<LiveMap> {
 
   @override
   void dispose() {
+    _positionStreamSubscription?.cancel(); // Cancel the position stream subscription
     super.dispose();
   }
 
   Future<void> _getCurrentLocation() async {
     Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    if (!mounted) return; // Check if the widget is still mounted
     setState(() {
       _currentLocation = LatLng(position.latitude, position.longitude);
       _isLocationInitialized = true; // Mark location as initialized
@@ -63,10 +72,10 @@ class _LiveMapState extends State<LiveMap> {
     LocationSettings locationSettings = const LocationSettings(
       accuracy: LocationAccuracy.high,
       distanceFilter: 10, // Update location if the device moves 10 meters
-      // timeLimit: Duration(seconds: 5), // Optional: limit the time for location updates
     );
 
-    Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
+    _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
+      if (!mounted) return; // Check if the widget is still mounted
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
       });
@@ -76,6 +85,8 @@ class _LiveMapState extends State<LiveMap> {
   void _startListeningToSensors() {
     // Listen to the device's magnetometer using the updated method
     magnetometerEventStream().listen((MagnetometerEvent event) {
+      // Check if the widget is still mounted before calling setState
+      if (!mounted) return;
       // Calculate the heading based on magnetometer data
       double heading = atan2(event.y, event.x) * (180 / pi); // Convert radians to degrees
       heading = (heading + 360) % 360; // Normalize to 0-360 degrees
@@ -87,6 +98,50 @@ class _LiveMapState extends State<LiveMap> {
         _currentDirection = heading; // Update the current direction
       });
     });
+  }
+
+  Future<void> _fetchRoute() async {
+    if (_startPoint != null && _endPoint != null) {
+      // Call a function to get the route points
+      List<LatLng> routePoints = await getRoute(_startPoint!, _endPoint!);
+      if (!mounted) return; // Check if the widget is still mounted
+      setState(() {
+        _pathPoints.clear(); // Clear previous path points
+        _pathPoints.addAll(routePoints); // Add new route points
+        _isRouteFetched = true; // Mark the route as fetched
+      });
+    }
+  }
+
+  // Update the getRoute method to fetch route points from a routing API
+  Future<List<LatLng>> getRoute(LatLng start, LatLng end) async {
+    // Example using OpenStreetMap's routing API
+    final response = await http.get(Uri.parse('https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full'));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      
+      // Check if the response contains routes
+      if (data['routes'].isNotEmpty) {
+        // Get the polyline string
+        String polyline = data['routes'][0]['geometry'];
+        
+        // Create an instance of GoogleMapsPolyline
+        final googleMapsPolyline = GoogleMapsPolyline();
+
+        // Decode the polyline into a list of MyPointLatLng points
+        List<MyPointLatLng> decodedPoints = googleMapsPolyline.decodePolyline(polyline);
+        
+        // Convert MyPointLatLng to LatLng
+        List<LatLng> routePoints = decodedPoints.map((point) => LatLng(point.latitude??0, point.longitude??0)).toList();
+        
+        return routePoints; // Return the decoded route points
+      } else {
+        throw Exception('No routes found');
+      }
+    } else {
+      throw Exception('Failed to load route');
+    }
   }
 
   @override
@@ -133,26 +188,90 @@ class _LiveMapState extends State<LiveMap> {
                   child: Text(_showInputFields?'Cancle':'Set Start and Destination',style: const TextStyle(color: Colors.white))
                 ),
                 if (_showInputFields) ...[
-                  TextField(
-                    controller: _startPointController,
-                    decoration: const InputDecoration(labelText: 'Start Point (Lat, Lng)'),
-                    onSubmitted: (value) {
-                      // Parse and set the start point
-                      final coords = value.split(',');
-                      if (coords.length == 2) {
-                        _startPoint = LatLng(double.parse(coords[0]), double.parse(coords[1]));
-                      }
-                    },
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _startPointController,
+                          decoration: const InputDecoration(labelText: 'Start Point (Lat, Lng)'),
+                          onChanged: (value) {
+                            // Parse and set the start point
+                            final coords = value.split(',');
+                            if (coords.length == 2) {
+                              _startPoint = LatLng(double.parse(coords[0]), double.parse(coords[1]));
+                              _fetchRoute();
+                            }
+                          },
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _isSettingStartPoint = true; // Start setting the start point
+                            _isSettingEndPoint = false; // Ensure end point is not being set
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black54,
+                          padding: const EdgeInsets.only(left: 5, right: 5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10), // Less rounded
+                            side: const BorderSide(
+                              color: Colors.black, // Border color
+                              width: 2, // Border width
+                            ),
+                          ),
+                        ),
+                        child: const Text('Set Start Point',style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _endPointController,
+                          decoration: const InputDecoration(labelText: 'End Point (Lat, Lng)'),
+                          onChanged: (value) {
+                            // Parse and set the end point
+                            final coords = value.split(',');
+                            if (coords.length == 2) {
+                              _endPoint = LatLng(double.parse(coords[0]), double.parse(coords[1]));
+                              _fetchRoute();
+                            }
+                          },
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _isSettingEndPoint = true; // Start setting the end point
+                            _isSettingStartPoint = false; // Ensure start point is not being set
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black54,
+                          padding: const EdgeInsets.only(left: 5, right: 5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10), // Less rounded
+                            side: const BorderSide(
+                              color: Colors.black, // Border color
+                              width: 2, // Border width
+                            ),
+                          ),
+                        ),
+                        child: const Text('Set End Point',style: TextStyle(color: Colors.white))
+                      ),
+                    ],
                   ),
                   ElevatedButton(
                     onPressed: () {
-                      setState(() {
-                        _isSettingStartPoint = true; // Start setting the start point
-                        _isSettingEndPoint = false; // Ensure end point is not being set
-                      });
+                      if(_startPoint!=null&&_endPoint!=null){
+                        _fetchRoute(); // Call fetchRoute when Done is pressed
+                      }
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black54,
+                      backgroundColor: Colors.green,
                       padding: const EdgeInsets.only(left: 5, right: 5),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10), // Less rounded
@@ -162,38 +281,7 @@ class _LiveMapState extends State<LiveMap> {
                         ),
                       ),
                     ),
-                    child: const Text('Set Start Point',style: TextStyle(color: Colors.white)),
-                  ),
-                  TextField(
-                    controller: _endPointController,
-                    decoration: const InputDecoration(labelText: 'End Point (Lat, Lng)'),
-                    onSubmitted: (value) {
-                      // Parse and set the end point
-                      final coords = value.split(',');
-                      if (coords.length == 2) {
-                        _endPoint = LatLng(double.parse(coords[0]), double.parse(coords[1]));
-                      }
-                    },
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _isSettingEndPoint = true; // Start setting the end point
-                        _isSettingStartPoint = false; // Ensure start point is not being set
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                      padding: const EdgeInsets.only(left: 5, right: 5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10), // Less rounded
-                        side: const BorderSide(
-                          color: Colors.black, // Border color
-                          width: 2, // Border width
-                        ),
-                      ),
-                    ),
-                    child: const Text('Set End Point',style: TextStyle(color: Colors.white))
+                    child: const Text('Done', style: TextStyle(color: Colors.white)),
                   ),
                 ],
                 Text(
@@ -297,7 +385,7 @@ class _LiveMapState extends State<LiveMap> {
                           ),
                         ],
                       ),
-                      if (_pathPoints.length == 2) // Draw path if both points are set
+                      if (_isRouteFetched && _pathPoints.isNotEmpty) // Draw path if the route has been fetched
                         PolylineLayer(
                           polylines: [
                             Polyline(
