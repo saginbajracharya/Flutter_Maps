@@ -27,6 +27,7 @@ class _LiveMapState extends State<LiveMap> {
   String _currentMapStyle             = 'default';
   bool   _isLocationInitialized       = false;
   bool   _isRouteFetched              = false;
+  double _distance                    = 0.0;
 
   LatLng? _startPoint; // New variable for starting point
   LatLng? _endPoint;   // New variable for destination point
@@ -109,8 +110,23 @@ class _LiveMapState extends State<LiveMap> {
         _pathPoints.clear(); // Clear previous path points
         _pathPoints.addAll(routePoints); // Add new route points
         _isRouteFetched = true; // Mark the route as fetched
+        // Calculate the total distance of the path
+        _distance = _calculatePathDistance(routePoints);
       });
     }
+  }
+
+  double _calculatePathDistance(List<LatLng> points) {
+    double totalDistance = 0.0;
+    for (int i = 0; i < points.length - 1; i++) {
+      totalDistance += Geolocator.distanceBetween(
+        points[i].latitude,
+        points[i].longitude,
+        points[i + 1].latitude,
+        points[i + 1].longitude,
+      );
+    }
+    return totalDistance; // Return the total distance in meters
   }
 
   // Update the getRoute method to fetch route points from a routing API
@@ -289,6 +305,13 @@ class _LiveMapState extends State<LiveMap> {
                   style: const TextStyle(fontSize: 16),
                 ),
                 const SizedBox(height: 10),
+                // Display the distance if the route has been fetched
+                if (_isRouteFetched) ...[
+                  Text(
+                    'Distance: ${(_distance / 1000).toStringAsFixed(2)} km',
+                    style: const TextStyle(fontSize: 16),
+                  ), // Display distance in kilometers
+                ],
                 // Map Type Buttons
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
