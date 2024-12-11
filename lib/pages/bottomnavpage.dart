@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:travelrecords/pages/home_page.dart';
-import 'package:travelrecords/pages/profile_page.dart';
+import 'package:travelrecords/pages/live_map.dart';
 import 'package:travelrecords/pages/settings_page.dart';
 
 class BottomNavPage extends StatefulWidget {
@@ -16,7 +16,7 @@ class _BottomNavPageState extends State<BottomNavPage> {
   final List<Widget> _pages = [
     const SettingsPage(),
     const HomePage(),
-    const ProfilePage(),
+    const LiveMap(),
   ];
 
   @override

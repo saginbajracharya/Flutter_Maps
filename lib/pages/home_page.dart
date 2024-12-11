@@ -112,7 +112,7 @@ class _HomePageState extends State<HomePage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Home Page'),
+          title: const Text('MAP'),
           centerTitle: true,
         ),
         body: Padding(
