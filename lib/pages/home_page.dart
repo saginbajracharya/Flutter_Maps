@@ -15,22 +15,21 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final _formKey = GlobalKey<FormState>();
+  final _formKey             = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _latController = TextEditingController();
-  final _lngController = TextEditingController();
+  final _lastNameController  = TextEditingController();
+  final _latController       = TextEditingController();
+  final _lngController       = TextEditingController();
 
   // Add map controller
-  final MapController _mapController = MapController();
-  LatLng _currentLocation = const LatLng(0, 0); // Default location
-  String _currentMapStyle = 'default';
+  final  MapController _mapController = MapController();
+  LatLng _currentLocation             = const LatLng(0, 0);  // Default location
+  String _currentMapStyle             = 'default';
   // Map of available styles
   final Map<String, String> _mapStyles = {
-    'default': 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    'topo': 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    'cycle':
-        'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
+    'default'     : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    'topo'        : 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    'cycle'       : 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
     'humanitarian': 'https://tile-{s}.openstreetmap.fr/hot/{z}/{x}/{y}.png',
   };
   final List<Marker> _markers = []; // List to hold markers

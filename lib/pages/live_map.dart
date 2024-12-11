@@ -22,6 +22,15 @@ class _LiveMapState extends State<LiveMap> {
   String _currentMapStyle             = 'default';
   bool _isLocationInitialized         = false;
 
+  LatLng? _startPoint; // New variable for starting point
+  LatLng? _endPoint;   // New variable for destination point
+  bool _showInputFields = false; // Control visibility of input fields
+  bool _isSettingStartPoint = false; // New variable to track if setting start point
+  bool _isSettingEndPoint = false;   // New variable to track if setting end point
+  final List<LatLng> _pathPoints = [];
+  final TextEditingController _startPointController = TextEditingController(); // Controller for start point
+  final TextEditingController _endPointController = TextEditingController();   // Controller for end point
+
   // Map of available styles
   final Map<String, String> _mapStyles = {
     'default'     : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -92,12 +101,101 @@ class _LiveMapState extends State<LiveMap> {
           centerTitle: true,
         ),
         body: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(0.0),
           child: Form(
             key: _formKey,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
               children: [
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _showInputFields = !_showInputFields; // Toggle input fields
+                    });
+                    if (!_showInputFields) {
+                      // Reset points and markers when hiding input fields
+                      _startPoint = null;
+                      _endPoint = null;
+                      _pathPoints.clear(); // Clear path points
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black54,
+                    padding: const EdgeInsets.only(left: 5, right: 5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10), // Less rounded
+                      side: const BorderSide(
+                        color: Colors.black, // Border color
+                        width: 2, // Border width
+                      ),
+                    ),
+                  ),
+                  child: Text(_showInputFields?'Cancle':'Set Start and Destination',style: const TextStyle(color: Colors.white))
+                ),
+                if (_showInputFields) ...[
+                  TextField(
+                    controller: _startPointController,
+                    decoration: const InputDecoration(labelText: 'Start Point (Lat, Lng)'),
+                    onSubmitted: (value) {
+                      // Parse and set the start point
+                      final coords = value.split(',');
+                      if (coords.length == 2) {
+                        _startPoint = LatLng(double.parse(coords[0]), double.parse(coords[1]));
+                      }
+                    },
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _isSettingStartPoint = true; // Start setting the start point
+                        _isSettingEndPoint = false; // Ensure end point is not being set
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      padding: const EdgeInsets.only(left: 5, right: 5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10), // Less rounded
+                        side: const BorderSide(
+                          color: Colors.black, // Border color
+                          width: 2, // Border width
+                        ),
+                      ),
+                    ),
+                    child: const Text('Set Start Point',style: TextStyle(color: Colors.white)),
+                  ),
+                  TextField(
+                    controller: _endPointController,
+                    decoration: const InputDecoration(labelText: 'End Point (Lat, Lng)'),
+                    onSubmitted: (value) {
+                      // Parse and set the end point
+                      final coords = value.split(',');
+                      if (coords.length == 2) {
+                        _endPoint = LatLng(double.parse(coords[0]), double.parse(coords[1]));
+                      }
+                    },
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _isSettingEndPoint = true; // Start setting the end point
+                        _isSettingStartPoint = false; // Ensure start point is not being set
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      padding: const EdgeInsets.only(left: 5, right: 5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10), // Less rounded
+                        side: const BorderSide(
+                          color: Colors.black, // Border color
+                          width: 2, // Border width
+                        ),
+                      ),
+                    ),
+                    child: const Text('Set End Point',style: TextStyle(color: Colors.white))
+                  ),
+                ],
                 Text(
                   'Current Location: ${_currentLocation.latitude}, ${_currentLocation.longitude}',
                   style: const TextStyle(fontSize: 16),
@@ -150,6 +248,23 @@ class _LiveMapState extends State<LiveMap> {
                       initialZoom: 13.0,
                       initialRotation: 0.0,
                       onTap: (tapPosition, point) {
+                        if (_isSettingStartPoint) {
+                          setState(() {
+                            _startPoint = point; // Set the start point
+                            _pathPoints.add(point); // Add start point to path
+                            _isSettingStartPoint = false; // Reset the setting state
+                            // Set the coordinates in the input field
+                            _startPointController.text = '${point.latitude}, ${point.longitude}'; // Update start point field
+                          });
+                        } else if (_isSettingEndPoint) {
+                          setState(() {
+                            _endPoint = point; // Set the end point
+                            _pathPoints.add(point); // Add end point to path
+                            _isSettingEndPoint = false; // Reset the setting state
+                            // Set the coordinates in the input field
+                            _endPointController.text = '${point.latitude}, ${point.longitude}'; // Update end point field
+                          });
+                        }
                       },
                     ), 
                     children: [
@@ -162,6 +277,16 @@ class _LiveMapState extends State<LiveMap> {
                       ),
                       MarkerLayer(
                         markers: [
+                          if (_startPoint != null) // Add marker for start point
+                            Marker(
+                              point: _startPoint!,
+                              child: const Icon(Icons.location_on, color: Colors.green),
+                            ),
+                          if (_endPoint != null) // Add marker for end point
+                            Marker(
+                              point: _endPoint!,
+                              child: const Icon(Icons.location_on, color: Colors.red),
+                            ),
                           Marker(
                             point: _currentLocation,
                             child: DirectionalMarker(direction: _currentDirection),
@@ -172,6 +297,16 @@ class _LiveMapState extends State<LiveMap> {
                           ),
                         ],
                       ),
+                      if (_pathPoints.length == 2) // Draw path if both points are set
+                        PolylineLayer(
+                          polylines: [
+                            Polyline(
+                              points: _pathPoints,
+                              color: Colors.blue,
+                              strokeWidth: 4.0,
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),
